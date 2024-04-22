@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use csv::{Reader, StringRecord};
 use std::error::Error;
@@ -8,45 +7,43 @@ use std::str::FromStr;
 use clap::{Command, Arg};
 use rust_decimal::Decimal;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum InputRowTransactionType {
     Deposit,
-    Withdrawal
+    Withdrawal,
+    Dispute,
+    Resolve,
+    Chargeback,
 }
+
+type ClientId = u16;
+type TransactionId = u32;
 
 #[derive(Debug)]
 struct InputRow {
     transaction_type: InputRowTransactionType,
-    client: u16,
-    tx: u32,
-    amount: Decimal
+    client: ClientId,
+    tx: TransactionId,
+    available: Decimal,
+    held: Decimal,
+    total: Decimal,
 }
 
-// impl Eq for InputRow {}
-//
-// impl PartialEq<Self> for InputRow {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.client == other.client
-//     }
-// }
-//
-// impl PartialOrd<Self> for InputRow {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-//
-// impl Ord for InputRow {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.client.cmp(&other.client) && self.tx.cmp(&other.tx)
-//     }
-// }
+#[derive(Debug)]
+struct DatabaseRow {
+    available: Decimal,
+    held: Decimal,
+    total: Decimal,
+}
 
 impl Into<InputRow> for StringRecord {
     fn into(self) -> InputRow {
         let transaction_type = match self.get(0).unwrap() {
             "deposit" => InputRowTransactionType::Deposit,
             "withdrawal" => InputRowTransactionType::Withdrawal,
+            "dispute" => InputRowTransactionType::Dispute,
+            "resolve" => InputRowTransactionType::Resolve,
+            "chargeback" => InputRowTransactionType::Chargeback,
             _ => panic!("Invalid transaction type")
         };
 
@@ -62,7 +59,9 @@ impl Into<InputRow> for StringRecord {
             transaction_type,
             client,
             tx,
-            amount
+            available: amount.clone(),
+            held: Decimal::ZERO,
+            total: amount,
         }
     }
 }
@@ -94,28 +93,94 @@ fn main() -> Result<(), Box<dyn Error>> {
         rows.push(row);
     }
 
-    for row in &rows {
-        println!("{:?}", row);
+    // transactions are globally unique, use as keys.
+    let mut transaction_db: HashMap<TransactionId, InputRow> = HashMap::new();
+    transaction_db.extend(rows.into_iter().map(|row| (row.tx, row)));
+
+    let mut client_db: HashMap<ClientId, DatabaseRow> = HashMap::new();
+    for (_, row) in &transaction_db {
+        let client_db = client_db.entry(row.client).or_insert(DatabaseRow {
+            available: Decimal::ZERO,
+            held: Decimal::ZERO,
+            total: Decimal::ZERO,
+        });
+
+        match row.transaction_type {
+            InputRowTransactionType::Deposit => {
+                client_db.available += row.total;
+                client_db.total += row.total;
+            }
+            InputRowTransactionType::Withdrawal => {
+                client_db.available -= row.total;
+                client_db.total -= row.total;
+            }
+            InputRowTransactionType::Dispute => {
+                client_db.available -= row.total;
+                client_db.held += row.total;
+            }
+            InputRowTransactionType::Resolve => {
+                client_db.available += row.total;
+                client_db.held -= row.total;
+            }
+            InputRowTransactionType::Chargeback => {
+                client_db.held -= row.total;
+                client_db.total -= row.total;
+            }
+        }
     }
 
-    let mut db = HashMap::new();
-    // &rows.iter().for_each(|row| {
-    //     let client = row.client;
-    //     let amount = row.amount;
-    //     let client_db = db.entry(client).or_insert(Decimal::ZERO);
-    //     match row.transaction_type {
-    //         InputRowTransactionType::Deposit => {
-    //             *client_db += amount;
-    //         }
-    //         InputRowTransactionType::Withdrawal => {
-    //             *client_db -= amount;
-    //         }
-    //     }
-    // });
-
-    for (client, amount) in db.iter() {
-        println!("Client: {}, Amount: {}", client, amount);
+    // write into stdout the csv table
+    let mut wtr = csv::Writer::from_writer(std::io::stdout());
+    wtr.write_record(&["client", "available", "held", "total"])?;
+    for (client, row) in client_db.iter() {
+        wtr.write_record(&[client.to_string(), row.available.to_string(), row.held.to_string(), row.total.to_string()])?;
     }
+    wtr.flush()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_input_row_from_string_record() {
+        let record = StringRecord::from(vec!["deposit", "1", "1", "1.0"]);
+        let row: InputRow = record.into();
+        assert_eq!(row.transaction_type, InputRowTransactionType::Deposit);
+        assert_eq!(row.client, 1);
+        assert_eq!(row.tx, 1);
+        assert_eq!(row.available, Decimal::new(10, 1));
+        assert_eq!(row.held, Decimal::ZERO);
+        assert_eq!(row.total, Decimal::new(10, 1));
+
+        let record = StringRecord::from(vec!["deposit", "2", "2", "2.0"]);
+        let row: InputRow = record.into();
+        assert_eq!(row.transaction_type, InputRowTransactionType::Deposit);
+        assert_eq!(row.client, 2);
+        assert_eq!(row.tx, 2);
+        assert_eq!(row.available, Decimal::new(20, 1));
+
+        let record = StringRecord::from(vec!["deposit", "1", "3", "2.0"]);
+        let row: InputRow = record.into();
+        assert_eq!(row.transaction_type, InputRowTransactionType::Deposit);
+        assert_eq!(row.client, 1);
+        assert_eq!(row.tx, 3);
+        assert_eq!(row.available, Decimal::new(20, 1));
+
+        let record = StringRecord::from(vec!["withdrawal", "1", "4", "1.5"]);
+        let row: InputRow = record.into();
+        assert_eq!(row.transaction_type, InputRowTransactionType::Withdrawal);
+        assert_eq!(row.client, 1);
+        assert_eq!(row.tx, 4);
+        assert_eq!(row.available, Decimal::new(15, 1));
+
+        let record = StringRecord::from(vec!["withdrawal", "2", "5", "3.0"]);
+        let row: InputRow = record.into();
+        assert_eq!(row.transaction_type, InputRowTransactionType::Withdrawal);
+        assert_eq!(row.client, 2);
+        assert_eq!(row.tx, 5);
+        assert_eq!(row.available, Decimal::new(30, 1));
+    }
 }
