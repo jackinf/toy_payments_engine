@@ -98,7 +98,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     transaction_db.extend(rows.into_iter().map(|row| (row.tx, row)));
 
     let mut client_db: HashMap<ClientId, DatabaseRow> = HashMap::new();
-    for (_, row) in &transaction_db {
+    apply_transactions(&mut transaction_db, &mut client_db);
+
+    // write into stdout the csv table
+    let mut wtr = csv::Writer::from_writer(std::io::stdout());
+    wtr.write_record(&["client", "available", "held", "total"])?;
+    for (client, row) in client_db.iter() {
+        wtr.write_record(&[client.to_string(), row.available.to_string(), row.held.to_string(), row.total.to_string()])?;
+    }
+    wtr.flush()?;
+
+    Ok(())
+}
+
+fn apply_transactions(transaction_db: &mut HashMap<TransactionId, InputRow>, client_db: &mut HashMap<ClientId, DatabaseRow>) {
+    for (_, row) in transaction_db {
         let client_db = client_db.entry(row.client).or_insert(DatabaseRow {
             available: Decimal::ZERO,
             held: Decimal::ZERO,
@@ -128,16 +142,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
-
-    // write into stdout the csv table
-    let mut wtr = csv::Writer::from_writer(std::io::stdout());
-    wtr.write_record(&["client", "available", "held", "total"])?;
-    for (client, row) in client_db.iter() {
-        wtr.write_record(&[client.to_string(), row.available.to_string(), row.held.to_string(), row.total.to_string()])?;
-    }
-    wtr.flush()?;
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -147,40 +151,59 @@ mod tests {
     #[test]
     fn test_input_row_from_string_record() {
         let record = StringRecord::from(vec!["deposit", "1", "1", "1.0"]);
-        let row: InputRow = record.into();
-        assert_eq!(row.transaction_type, InputRowTransactionType::Deposit);
-        assert_eq!(row.client, 1);
-        assert_eq!(row.tx, 1);
-        assert_eq!(row.available, Decimal::new(10, 1));
-        assert_eq!(row.held, Decimal::ZERO);
-        assert_eq!(row.total, Decimal::new(10, 1));
+        let row1: InputRow = record.into();
+        assert_eq!(row1.transaction_type, InputRowTransactionType::Deposit);
+        assert_eq!(row1.client, 1);
+        assert_eq!(row1.tx, 1);
+        assert_eq!(row1.available, Decimal::new(10, 1));
+        assert_eq!(row1.held, Decimal::ZERO);
+        assert_eq!(row1.total, Decimal::new(10, 1));
 
         let record = StringRecord::from(vec!["deposit", "2", "2", "2.0"]);
-        let row: InputRow = record.into();
-        assert_eq!(row.transaction_type, InputRowTransactionType::Deposit);
-        assert_eq!(row.client, 2);
-        assert_eq!(row.tx, 2);
-        assert_eq!(row.available, Decimal::new(20, 1));
+        let row2: InputRow = record.into();
+        assert_eq!(row2.transaction_type, InputRowTransactionType::Deposit);
+        assert_eq!(row2.client, 2);
+        assert_eq!(row2.tx, 2);
+        assert_eq!(row2.available, Decimal::new(20, 1));
 
         let record = StringRecord::from(vec!["deposit", "1", "3", "2.0"]);
-        let row: InputRow = record.into();
-        assert_eq!(row.transaction_type, InputRowTransactionType::Deposit);
-        assert_eq!(row.client, 1);
-        assert_eq!(row.tx, 3);
-        assert_eq!(row.available, Decimal::new(20, 1));
+        let row3: InputRow = record.into();
+        assert_eq!(row3.transaction_type, InputRowTransactionType::Deposit);
+        assert_eq!(row3.client, 1);
+        assert_eq!(row3.tx, 3);
+        assert_eq!(row3.available, Decimal::new(20, 1));
 
         let record = StringRecord::from(vec!["withdrawal", "1", "4", "1.5"]);
-        let row: InputRow = record.into();
-        assert_eq!(row.transaction_type, InputRowTransactionType::Withdrawal);
-        assert_eq!(row.client, 1);
-        assert_eq!(row.tx, 4);
-        assert_eq!(row.available, Decimal::new(15, 1));
+        let row4: InputRow = record.into();
+        assert_eq!(row4.transaction_type, InputRowTransactionType::Withdrawal);
+        assert_eq!(row4.client, 1);
+        assert_eq!(row4.tx, 4);
+        assert_eq!(row4.available, Decimal::new(15, 1));
 
         let record = StringRecord::from(vec!["withdrawal", "2", "5", "3.0"]);
-        let row: InputRow = record.into();
-        assert_eq!(row.transaction_type, InputRowTransactionType::Withdrawal);
-        assert_eq!(row.client, 2);
-        assert_eq!(row.tx, 5);
-        assert_eq!(row.available, Decimal::new(30, 1));
+        let row5: InputRow = record.into();
+        assert_eq!(row5.transaction_type, InputRowTransactionType::Withdrawal);
+        assert_eq!(row5.client, 2);
+        assert_eq!(row5.tx, 5);
+        assert_eq!(row5.available, Decimal::new(30, 1));
+
+        let rows = vec![row1, row2, row3, row4, row5];
+
+        let mut transaction_db: HashMap<TransactionId, InputRow> = HashMap::new();
+        transaction_db.extend(rows.into_iter().map(|row| (row.tx, row)));
+
+        let mut client_db: HashMap<ClientId, DatabaseRow> = HashMap::new();
+
+        // Subject under test
+        apply_transactions(&mut transaction_db, &mut client_db);
+
+        assert_eq!(client_db.len(), 2);
+        assert_eq!(client_db.get(&1).unwrap().available, Decimal::new(15, 1));
+        assert_eq!(client_db.get(&1).unwrap().held, Decimal::ZERO);
+        assert_eq!(client_db.get(&1).unwrap().total, Decimal::new(15, 1));
+
+        assert_eq!(client_db.get(&2).unwrap().available, Decimal::new(-10, 1));
+        assert_eq!(client_db.get(&2).unwrap().held, Decimal::ZERO);
+        assert_eq!(client_db.get(&2).unwrap().total, Decimal::new(-10, 1));
     }
 }
