@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let matches = Command::new("CSV Reader")
         .version("1.0")
         .author("Your Name. <your_email@example.com>")
-        .about("Reads CSV files and prints to stdout")
+        .about("Toy Engine")
         .arg(
             Arg::new("filename")
                 .help("The CSV file to read")
