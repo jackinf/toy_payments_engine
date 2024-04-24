@@ -3,6 +3,15 @@
 ## Running
 
 ```bash
-cargo run --package toy_payments_engine --bin toy_payments_engine -- transactions.csv > results.csv
+cargo run -- transactions.csv > results.csv
 ```
 
+Run unit tests
+```bash
+cargo test
+```
+
+Running benchmarks
+```bash
+cargo bench
+```
