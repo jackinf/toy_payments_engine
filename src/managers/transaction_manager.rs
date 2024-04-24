@@ -1,6 +1,6 @@
+use crate::common::types::ClientId;
 use crate::models::client::Client;
 use crate::models::transaction::{InputRowTransactionType, Transaction};
-use crate::types::ClientId;
 use std::collections::HashMap;
 
 pub struct TransactionManager {
@@ -16,8 +16,9 @@ impl TransactionManager {
 
     pub fn add_transaction(&mut self, row: Transaction) {
         let client_db = &mut self.client_db;
+        let client_id = row.get_client();
 
-        let client = client_db.entry(row.get_client()).or_insert(Client::new());
+        let client = client_db.entry(client_id).or_insert(Client::new(client_id));
 
         match row.get_transaction_type() {
             InputRowTransactionType::Deposit => client.deposit(row.get_total()),
@@ -28,28 +29,8 @@ impl TransactionManager {
         }
     }
 
-    pub fn output_final_state(&self) -> Result<(), String> {
-        let mut wtr = csv::Writer::from_writer(std::io::stdout());
-        if let Err(err) = wtr.write_record(["client", "available", "held", "total"]) {
-            return Err(err.to_string());
-        }
-
-        for (client_id, row) in self.client_db.iter() {
-            let client = client_id.to_string();
-            let available = row.get_available().to_string();
-            let held = row.get_held().to_string();
-            let total = row.get_total().to_string();
-
-            if let Err(err) = wtr.write_record(&[client, available, held, total]) {
-                return Err(err.to_string());
-            }
-        }
-
-        if let Err(err) = wtr.flush() {
-            return Err(err.to_string());
-        }
-
-        Ok(())
+    pub fn get_all_values(self) -> Vec<Client> {
+        self.client_db.values().cloned().collect()
     }
 }
 

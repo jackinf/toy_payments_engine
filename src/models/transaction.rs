@@ -1,4 +1,4 @@
-use crate::types::{ClientId, TransactionId};
+use crate::common::types::{ClientId, TransactionId};
 use csv::StringRecord;
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -15,7 +15,7 @@ pub enum InputRowTransactionType {
 #[derive(Debug, PartialEq)]
 pub struct Transaction {
     transaction_type: InputRowTransactionType,
-    client: ClientId,
+    client_id: ClientId,
     tx: TransactionId,
     available: Decimal,
     held: Decimal,
@@ -31,7 +31,7 @@ impl Transaction {
     ) -> Self {
         Transaction {
             transaction_type,
-            client,
+            client_id: client,
             tx,
             available: amount, // decimal uses Copy trait
             held: Decimal::ZERO,
@@ -44,7 +44,7 @@ impl Transaction {
     }
 
     pub fn get_client(&self) -> ClientId {
-        self.client
+        self.client_id
     }
 
     pub fn get_total(&self) -> Decimal {
@@ -52,22 +52,26 @@ impl Transaction {
     }
 }
 
-impl From<StringRecord> for Transaction {
-    fn from(row: StringRecord) -> Self {
-        let transaction_type = match row.get(0).unwrap() {
+impl TryFrom<StringRecord> for Transaction {
+    type Error = ();
+
+    fn try_from(value: StringRecord) -> Result<Self, Self::Error> {
+        let transaction_type = match value.get(0).unwrap() {
             "deposit" => InputRowTransactionType::Deposit,
             "withdrawal" => InputRowTransactionType::Withdrawal,
             "dispute" => InputRowTransactionType::Dispute,
             "resolve" => InputRowTransactionType::Resolve,
             "chargeback" => InputRowTransactionType::Chargeback,
-            _ => panic!("Invalid transaction type"),
+            _ => return Err(()),
         };
 
-        let client = row.get(1).unwrap().parse::<ClientId>().unwrap();
-        let tx = row.get(2).unwrap().parse::<TransactionId>().unwrap();
-        let amount = Decimal::from_str(row.get(3).unwrap()).unwrap();
+        let client = value.get(1).unwrap().parse::<ClientId>().unwrap();
+        let tx = value.get(2).unwrap().parse::<TransactionId>().unwrap();
+        let amount = Decimal::from_str(value.get(3).unwrap())
+            .unwrap()
+            .round_dp(4);
 
-        Transaction::new(transaction_type, client, tx, amount)
+        Ok(Transaction::new(transaction_type, client, tx, amount))
     }
 }
 

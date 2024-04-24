@@ -1,6 +1,6 @@
-use std::error::Error;
 use clap::{Arg, Command};
-use toy_payments_engine::read_transactions_from_file;
+use std::error::Error;
+use toy_payments_engine::{run_transactions_from_file, write_output};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = Command::new("CSV Reader")
@@ -18,10 +18,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // safe to unwrap because the argument is required
     let filename = matches.get_one::<String>("filename").unwrap();
 
-    let transaction_manager = read_transactions_from_file(filename)?;
-
-    // TODO: check if the output is streamed to stdout
-    let _ = transaction_manager.output_final_state();
+    let clients = run_transactions_from_file(filename)?;
+    write_output(&clients)?;
 
     Ok(())
 }
