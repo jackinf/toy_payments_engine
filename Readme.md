@@ -1,7 +1,8 @@
 # Toy transaction
 
-## Running
+## Usage
 
+Running the program
 ```bash
 cargo run -- transactions.csv > results.csv
 ```
