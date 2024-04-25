@@ -25,15 +25,16 @@ impl OutputManager for CsvOutputManager {
 
     fn write_output(&self, clients: &[ClientSnapshot]) -> Result<(), OutputError> {
         let mut wtr = csv::Writer::from_writer(std::io::stdout());
-        wtr.write_record(["client", "available", "held", "total"])?;
+        wtr.write_record(["client", "available", "held", "total", "locked"])?;
 
         for client in clients.iter() {
             let client_id = client.get_id().to_string();
             let available = client.get_available().to_string();
             let held = client.get_held().to_string();
             let total = client.get_total().to_string();
+            let locked = client.get_locked().to_string();
 
-            wtr.write_record(&[client_id, available, held, total])?;
+            wtr.write_record(&[client_id, available, held, total, locked])?;
         }
 
         wtr.flush()?;

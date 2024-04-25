@@ -37,6 +37,7 @@ pub struct OutputItem {
     pub available: Decimal,
     pub held: Decimal,
     pub total: Decimal,
+    pub locked: bool,
 }
 
 #[cfg(test)]
@@ -48,12 +49,14 @@ pub fn deserialize_output_lines(output_lines_raw: Vec<StringRecord>) -> Vec<Outp
             let available = Decimal::from_str(record.get(1).unwrap()).unwrap();
             let held = Decimal::from_str(record.get(2).unwrap()).unwrap();
             let total = Decimal::from_str(record.get(3).unwrap()).unwrap();
+            let locked = record.get(4).unwrap().parse::<bool>().unwrap();
 
             OutputItem {
                 id,
                 available,
                 held,
                 total,
+                locked,
             }
         })
         .collect()
@@ -76,5 +79,6 @@ pub fn compare_expected_output_with_actual(
             assert_eq!(expected.available, actual.get_available());
             assert_eq!(expected.held, actual.get_held());
             assert_eq!(expected.total, actual.get_total());
+            assert_eq!(expected.locked, actual.get_locked());
         });
 }

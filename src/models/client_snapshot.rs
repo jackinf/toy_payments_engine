@@ -9,14 +9,16 @@ pub struct ClientSnapshot {
     id: ClientId,
     available: Decimal,
     held: Decimal,
+    locked: bool,
 }
 
 impl ClientSnapshot {
-    pub fn new(id: ClientId, available: Decimal, held: Decimal) -> Self {
+    pub fn new(id: ClientId, available: Decimal, held: Decimal, locked: bool) -> Self {
         ClientSnapshot {
             id,
             available,
             held,
+            locked,
         }
     }
 
@@ -35,6 +37,10 @@ impl ClientSnapshot {
     pub fn get_total(&self) -> Decimal {
         self.available + self.held
     }
+
+    pub fn get_locked(&self) -> bool {
+        self.locked
+    }
 }
 
 #[cfg(test)]
@@ -48,11 +54,12 @@ mod tests {
         let available = Decimal::new(1000, 2);
         let held = Decimal::new(100, 2);
 
-        let snapshot = ClientSnapshot::new(id, available, held);
+        let snapshot = ClientSnapshot::new(id, available, held, false);
 
         assert_eq!(snapshot.get_id(), id);
         assert_eq!(snapshot.get_available(), available);
         assert_eq!(snapshot.get_held(), held);
         assert_eq!(snapshot.get_total(), available + held);
+        assert_eq!(snapshot.get_locked(), false);
     }
 }

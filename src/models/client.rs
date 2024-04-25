@@ -7,7 +7,7 @@ pub struct Client {
     client_id: ClientId,
     available: Decimal,
     held: Decimal,
-    frozen: bool,
+    locked: bool,
 }
 
 impl Client {
@@ -16,7 +16,7 @@ impl Client {
             client_id,
             available: Decimal::ZERO,
             held: Decimal::ZERO,
-            frozen: false,
+            locked: false,
         }
     }
 
@@ -78,15 +78,15 @@ impl Client {
     }
 
     pub fn freeze(&mut self) {
-        self.frozen = true;
+        self.locked = true;
     }
 
-    pub fn is_frozen(&self) -> bool {
-        self.frozen
+    pub fn is_locked(&self) -> bool {
+        self.locked
     }
 
     pub fn get_snapshot(&self) -> ClientSnapshot {
-        ClientSnapshot::new(self.client_id, self.available, self.held)
+        ClientSnapshot::new(self.client_id, self.available, self.held, self.locked)
     }
 }
 

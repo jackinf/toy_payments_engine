@@ -54,7 +54,7 @@ impl TransactionManager {
             client_db.insert(client_id, Client::new(client_id));
         }
         let client = client_db.get_mut(&client_id).unwrap();
-        if client.is_frozen() {
+        if client.is_locked() {
             return Err(TxError::ClientFrozen(client_id));
         }
 
@@ -157,7 +157,7 @@ impl TransactionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::types::TransactionType::{Deposit, Dispute, Withdrawal};
+    use crate::common::types::TransactionType::{Deposit, Withdrawal};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use Transaction as Tx;
