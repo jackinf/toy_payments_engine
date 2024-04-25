@@ -1,8 +1,8 @@
-use crate::models::client::Client;
+use crate::models::client_snapshot::ClientSnapshot;
 
 pub trait OutputManager {
     fn new() -> Self;
-    fn write_output(&self, clients: &[Client]) -> Result<(), String>;
+    fn write_output(&self, clients: &[ClientSnapshot]) -> Result<(), String>;
 }
 
 pub struct CsvOutputManager;
@@ -12,7 +12,7 @@ impl OutputManager for CsvOutputManager {
         CsvOutputManager {}
     }
 
-    fn write_output(&self, clients: &[Client]) -> Result<(), String> {
+    fn write_output(&self, clients: &[ClientSnapshot]) -> Result<(), String> {
         let mut wtr = csv::Writer::from_writer(std::io::stdout());
         if let Err(err) = wtr.write_record(["client", "available", "held", "total"]) {
             return Err(err.to_string());
