@@ -23,10 +23,10 @@ mod common {
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("failed to read to CSV: {0}")]
+    #[error("failed to read from CSV: {0}")]
     CsvReadError(#[from] CsvError),
 
-    #[error("failed to read to stdout: {0}")]
+    #[error("failed to read from stdout: {0}")]
     IoReadError(#[from] std::io::Error),
 
     #[error("failed to parse transaction: {0}")]
