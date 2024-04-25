@@ -6,8 +6,11 @@ use std::result;
 use std::str::FromStr;
 use toy_payments_engine::models::client_snapshot::ClientSnapshot;
 
+// compile in test mode only
+#[cfg(test)]
 type Result<T> = result::Result<T, Box<dyn Error>>;
 
+#[cfg(test)]
 pub(crate) fn get_test_file_path(path: &str) -> PathBuf {
     let mut test_file_path = PathBuf::from(file!());
     test_file_path.pop();
@@ -15,6 +18,7 @@ pub(crate) fn get_test_file_path(path: &str) -> PathBuf {
     test_file_path
 }
 
+#[cfg(test)]
 pub(crate) fn read_csv(file_path: &PathBuf) -> Result<Vec<StringRecord>> {
     let mut reader = csv::Reader::from_path(file_path)?;
     let mut records = Vec::new();

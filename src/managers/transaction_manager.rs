@@ -19,7 +19,7 @@ impl TransactionManager {
         }
     }
 
-    pub fn add_transaction(&mut self, tx: Transaction) {
+    pub fn add_transaction(&mut self, tx: Transaction) -> Result<(), String> {
         let client_db = &mut self.client_db;
 
         let client_id = tx.get_client_id();
@@ -33,8 +33,7 @@ impl TransactionManager {
         }
         let client = client_db.get_mut(&client_id).unwrap();
         if client.is_frozen() {
-            // cannot do anything with frozen account
-            return;
+            return Err(format!("Client {} is frozen", client_id));
         }
 
         let id_pair = &(tx_id, client_id);
@@ -43,7 +42,7 @@ impl TransactionManager {
             InputRowTransactionType::Deposit => {
                 // did transaction already happen?
                 if self.tx_history.contains_key(id_pair) {
-                    return;
+                    return Err(format!("Transaction {} already happened", tx_id));
                 }
 
                 // unwrap should be safe as we validated already
@@ -53,7 +52,7 @@ impl TransactionManager {
             InputRowTransactionType::Withdrawal => {
                 // did transaction already happen?
                 if self.tx_history.contains_key(id_pair) {
-                    return;
+                    return Err(format!("Transaction {} already happened", tx_id));
                 }
 
                 // unwrap should be safe as we validated already
@@ -65,26 +64,34 @@ impl TransactionManager {
                     if let Some(amount) = transaction.get_net_amount() {
                         client.dispute(amount);
                         self.disputed.insert(*id_pair);
+                    } else {
+                        return Err(format!("Transaction {} has no amount", tx_id));
                     }
+                } else {
+                    return Err(format!("Transaction {} not found", tx_id));
                 }
             }
             InputRowTransactionType::Resolve => {
                 // check if the transaction is disputed
                 if !(self.disputed.contains(id_pair)) {
-                    return;
+                    return Err(format!("Transaction {} is not disputed", tx_id));
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
                     if let Some(amount) = transaction.get_net_amount() {
                         client.resolve(amount);
                         self.disputed.remove(id_pair);
+                    } else {
+                        return Err(format!("Transaction {} has no amount", tx_id));
                     }
+                } else {
+                    return Err(format!("Transaction {} not found", tx_id));
                 }
             }
             InputRowTransactionType::Chargeback => {
                 // check if the transaction is disputed
                 if !(self.disputed.contains(id_pair)) {
-                    return;
+                    return Err(format!("Transaction {} is not disputed", tx_id));
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
@@ -92,10 +99,16 @@ impl TransactionManager {
                         client.chargeback(amount);
                         client.freeze();
                         self.disputed.remove(id_pair);
+                    } else {
+                        return Err(format!("Transaction {} has no amount", tx_id));
                     }
+                } else {
+                    return Err(format!("Transaction {} not found", tx_id));
                 }
             }
         }
+
+        Ok(())
     }
 
     pub fn get_all_values(self) -> Vec<ClientSnapshot> {
@@ -151,11 +164,11 @@ mod tests {
         );
 
         // Act
-        transaction_manager.add_transaction(transaction1);
-        transaction_manager.add_transaction(transaction2);
-        transaction_manager.add_transaction(transaction3);
-        transaction_manager.add_transaction(transaction4);
-        transaction_manager.add_transaction(transaction5);
+        let _ = transaction_manager.add_transaction(transaction1);
+        let _ = transaction_manager.add_transaction(transaction2);
+        let _ = transaction_manager.add_transaction(transaction3);
+        let _ = transaction_manager.add_transaction(transaction4);
+        let _ = transaction_manager.add_transaction(transaction5);
 
         // Assert
         let client_db = transaction_manager.client_db;

@@ -1,8 +1,19 @@
 use crate::models::client_snapshot::ClientSnapshot;
+use csv::Error as CsvError;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum OutputError {
+    #[error("failed to write to CSV: {0}")]
+    CsvWriteError(#[from] CsvError),
+
+    #[error("failed to write to stdout: {0}")]
+    IoWriteError(#[from] std::io::Error),
+}
 
 pub trait OutputManager {
     fn new() -> Self;
-    fn write_output(&self, clients: &[ClientSnapshot]) -> Result<(), String>;
+    fn write_output(&self, clients: &[ClientSnapshot]) -> Result<(), OutputError>;
 }
 
 pub struct CsvOutputManager;
@@ -12,11 +23,9 @@ impl OutputManager for CsvOutputManager {
         CsvOutputManager {}
     }
 
-    fn write_output(&self, clients: &[ClientSnapshot]) -> Result<(), String> {
+    fn write_output(&self, clients: &[ClientSnapshot]) -> Result<(), OutputError> {
         let mut wtr = csv::Writer::from_writer(std::io::stdout());
-        if let Err(err) = wtr.write_record(["client", "available", "held", "total"]) {
-            return Err(err.to_string());
-        }
+        wtr.write_record(["client", "available", "held", "total"])?;
 
         for client in clients.iter() {
             let client_id = client.get_id().to_string();
@@ -24,14 +33,10 @@ impl OutputManager for CsvOutputManager {
             let held = client.get_held().to_string();
             let total = client.get_total().to_string();
 
-            if let Err(err) = wtr.write_record(&[client_id, available, held, total]) {
-                return Err(err.to_string());
-            }
+            wtr.write_record(&[client_id, available, held, total])?;
         }
 
-        if let Err(err) = wtr.flush() {
-            return Err(err.to_string());
-        }
+        wtr.flush()?;
 
         Ok(())
     }
