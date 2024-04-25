@@ -36,3 +36,23 @@ impl ClientSnapshot {
         self.available + self.held
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal::Decimal;
+
+    #[test]
+    fn test_client_snapshot_new() {
+        let id = 1;
+        let available = Decimal::new(1000, 2);
+        let held = Decimal::new(100, 2);
+
+        let snapshot = ClientSnapshot::new(id, available, held);
+
+        assert_eq!(snapshot.get_id(), id);
+        assert_eq!(snapshot.get_available(), available);
+        assert_eq!(snapshot.get_held(), held);
+        assert_eq!(snapshot.get_total(), available + held);
+    }
+}

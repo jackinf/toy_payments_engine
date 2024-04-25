@@ -1,17 +1,21 @@
-use crate::common::types::ClientId;
+use crate::common::types::{ClientId, TransactionId};
+use crate::models::client::Client;
 use crate::models::client_snapshot::ClientSnapshot;
-use crate::models::client_transactions::ClientTransactions;
 use crate::models::transaction::{InputRowTransactionType, Transaction};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct TransactionManager {
-    client_db: HashMap<ClientId, ClientTransactions>,
+    client_db: HashMap<ClientId, Client>,
+    tx_history: HashMap<(TransactionId, ClientId), Transaction>,
+    disputed: HashSet<(TransactionId, ClientId)>,
 }
 
 impl TransactionManager {
     pub fn new() -> Self {
         TransactionManager {
             client_db: HashMap::new(),
+            tx_history: HashMap::new(),
+            disputed: HashSet::new(),
         }
     }
 
@@ -25,18 +29,54 @@ impl TransactionManager {
 
         let client_txs = client_db.get(&client_id);
         if client_txs.is_none() {
-            client_db.insert(client_id, ClientTransactions::new(client_id));
+            client_db.insert(client_id, Client::new(client_id));
         }
-        let client_txs = client_db.get_mut(&client_id).unwrap();
+        let client = client_db.get_mut(&client_id).unwrap();
+        let id_pair = &(tx_id, client_id);
 
         match tx_type {
-            // unwrap should be safe as we validated already
-            InputRowTransactionType::Deposit => client_txs.deposit(tx_amount.unwrap()),
-            // unwrap should be safe as we validated already
-            InputRowTransactionType::Withdrawal => client_txs.withdraw(tx_amount.unwrap()),
-            InputRowTransactionType::Dispute => client_txs.dispute(tx_id),
-            InputRowTransactionType::Resolve => client_txs.resolve(tx_id),
-            InputRowTransactionType::Chargeback => client_txs.chargeback(tx_id),
+            InputRowTransactionType::Deposit => {
+                // unwrap should be safe as we validated already
+                client.deposit(tx_amount.unwrap())
+            }
+            InputRowTransactionType::Withdrawal => {
+                // unwrap should be safe as we validated already
+                client.withdraw(tx_amount.unwrap())
+            }
+            InputRowTransactionType::Dispute => {
+                if let Some(transaction) = self.tx_history.get(id_pair) {
+                    if let Some(amount) = transaction.get_amount() {
+                        client.dispute(amount);
+                        self.disputed.insert(*id_pair);
+                    }
+                }
+            }
+            InputRowTransactionType::Resolve => {
+                // check if the transaction is disputed
+                if !(self.disputed.contains(id_pair)) {
+                    return;
+                }
+
+                if let Some(transaction) = self.tx_history.get(id_pair) {
+                    if let Some(amount) = transaction.get_amount() {
+                        client.resolve(amount);
+                        self.disputed.remove(id_pair);
+                    }
+                }
+            }
+            InputRowTransactionType::Chargeback => {
+                // check if the transaction is disputed
+                if !(self.disputed.contains(id_pair)) {
+                    return;
+                }
+
+                if let Some(transaction) = self.tx_history.get(id_pair) {
+                    if let Some(amount) = transaction.get_amount() {
+                        client.chargeback(amount);
+                        self.disputed.remove(id_pair);
+                    }
+                }
+            }
         }
     }
 
@@ -57,7 +97,7 @@ mod tests {
     use rust_decimal::Decimal;
 
     #[test]
-    fn test_input_row_from_string_record() {
+    fn test_input_multiple_clients_deposit_withdraw() {
         // Arrange
         let mut transaction_manager = TransactionManager::new();
 

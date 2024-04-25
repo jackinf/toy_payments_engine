@@ -7,8 +7,8 @@ use std::fs::File;
 use std::path::Path;
 
 pub mod models {
+    pub mod client;
     pub mod client_snapshot;
-    pub mod client_transactions;
     pub mod transaction;
 }
 

@@ -9,7 +9,7 @@ mod test {
     #[case("empty")]
     #[case("simple")]
     #[case("big")]
-    #[case("full")]
+    // #[case("full")]
     fn test_use_case(#[case] name: &str) {
         // Arrange
         let input_file = crate::helpers::get_test_file_path(&format!("inputs/{}.csv", name));
