@@ -71,13 +71,24 @@ const COL_CLIENT_ID: usize = 1;
 const COL_TX_ID: usize = 2;
 const COL_AMOUNT: usize = 3;
 
+#[derive(Debug)]
+pub struct TxError(String);
+
+impl std::fmt::Display for TxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Transaction error: {}", self.0)
+    }
+}
+
+impl std::error::Error for TxError {}
+
 impl TryFrom<StringRecord> for Transaction {
-    type Error = String; // TODO: to validation custom error type
+    type Error = TxError;
 
     fn try_from(value: StringRecord) -> Result<Self, Self::Error> {
         // there should be 4 columns in the input row
         if value.len() != 4 {
-            return Err("Invalid number of columns. Columns: type, client, tx, amount".into());
+            return Err(TxError("Invalid number of columns. Columns: type, client, tx, amount".into()));
         }
 
         let col_tx_id = value.get(COL_TX_ID).unwrap().trim();
@@ -87,7 +98,7 @@ impl TryFrom<StringRecord> for Transaction {
 
         let tx_id = match col_tx_id.parse::<TransactionId>() {
             Ok(tx) => tx,
-            Err(_) => return Err("Invalid transaction id".into()),
+            Err(_) => return Err(TxError("Invalid transaction id".into())),
         };
 
         let tx_type = match col_tx_type {
@@ -96,12 +107,12 @@ impl TryFrom<StringRecord> for Transaction {
             "dispute" => InputRowTransactionType::Dispute,
             "resolve" => InputRowTransactionType::Resolve,
             "chargeback" => InputRowTransactionType::Chargeback,
-            _ => return Err("Invalid transaction type".into()),
+            _ => return Err(TxError("Invalid transaction type".into())),
         };
 
         let client_id: ClientId = match col_client_id.parse() {
             Ok(client) => client,
-            Err(_) => return Err("Invalid client id".into()),
+            Err(_) => return Err(TxError("Invalid client id".into())),
         };
 
         // If one of these transaction types were specified, the amount should be empty.
@@ -111,7 +122,7 @@ impl TryFrom<StringRecord> for Transaction {
 
         if is_no_amount_transaction_type {
             if !col_amount.is_empty() {
-                return Err("An amount should be empty".into());
+                return Err(TxError("An amount should be empty".into()));
             }
 
             return Ok(Transaction::new(tx_id, tx_type, client_id, None));
@@ -119,7 +130,7 @@ impl TryFrom<StringRecord> for Transaction {
 
         let amount = match Decimal::from_str(col_amount) {
             Ok(amount) => amount.round_dp(4),
-            Err(_) => return Err("Invalid amount".into()),
+            Err(_) => return Err(TxError("Invalid amount".into())),
         };
 
         Ok(Transaction::new(tx_id, tx_type, client_id, Some(amount)))
