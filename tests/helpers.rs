@@ -6,7 +6,6 @@ use std::result;
 use std::str::FromStr;
 use toy_payments_engine::models::client_snapshot::ClientSnapshot;
 
-// compile in test mode only
 #[cfg(test)]
 type Result<T> = result::Result<T, Box<dyn Error>>;
 
@@ -31,6 +30,7 @@ pub(crate) fn read_csv(file_path: &PathBuf) -> Result<Vec<StringRecord>> {
     Ok(records)
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 pub struct OutputItem {
     pub id: u16,
@@ -39,6 +39,7 @@ pub struct OutputItem {
     pub total: Decimal,
 }
 
+#[cfg(test)]
 pub fn deserialize_output_lines(output_lines_raw: Vec<StringRecord>) -> Vec<OutputItem> {
     output_lines_raw
         .iter()
@@ -58,6 +59,7 @@ pub fn deserialize_output_lines(output_lines_raw: Vec<StringRecord>) -> Vec<Outp
         .collect()
 }
 
+#[cfg(test)]
 pub fn compare_expected_output_with_actual(
     output_lines: &mut Vec<OutputItem>,
     mut clients: Vec<ClientSnapshot>,
