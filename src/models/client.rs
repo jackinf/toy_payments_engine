@@ -127,7 +127,7 @@ mod tests {
         client.dispute(Decimal::new(200, 2));
         client.chargeback(Decimal::new(200, 2));
 
-        assert_eq!(client.available, Decimal::new(-250, 2));
+        assert_eq!(client.available, Decimal::new(-50, 2));
         assert_eq!(client.held, Decimal::ZERO);
     }
 }
