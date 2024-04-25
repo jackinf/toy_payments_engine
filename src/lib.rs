@@ -2,10 +2,10 @@ use crate::managers::output_manager::{CsvOutputManager, OutputError, OutputManag
 use crate::managers::transaction_manager::TransactionManager;
 use crate::models::client_snapshot::ClientSnapshot;
 use crate::models::transaction::{Transaction, TxError};
+use csv::Error as CsvError;
 use std::fs::File;
 use std::path::Path;
 use thiserror::Error;
-use csv::Error as CsvError;
 
 pub mod models {
     pub mod client;

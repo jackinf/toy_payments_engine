@@ -1,13 +1,13 @@
-use crate::common::types::{ClientId, TransactionId};
+use crate::common::types::{ClientId, TransactionId, TransactionType};
 use crate::models::client::Client;
 use crate::models::client_snapshot::ClientSnapshot;
-use crate::models::transaction::{InputRowTransactionType, Transaction};
+use crate::models::transaction::Transaction;
 use std::collections::{HashMap, HashSet};
 
 pub struct TransactionManager {
     client_db: HashMap<ClientId, Client>,
     tx_history: HashMap<(TransactionId, ClientId), Transaction>,
-    disputed: HashSet<(TransactionId, ClientId)>,
+    tx_disputed: HashSet<(TransactionId, ClientId)>,
 }
 
 impl TransactionManager {
@@ -15,7 +15,7 @@ impl TransactionManager {
         TransactionManager {
             client_db: HashMap::new(),
             tx_history: HashMap::new(),
-            disputed: HashSet::new(),
+            tx_disputed: HashSet::new(),
         }
     }
 
@@ -39,7 +39,7 @@ impl TransactionManager {
         let id_pair = &(tx_id, client_id);
 
         match tx_type {
-            InputRowTransactionType::Deposit => {
+            TransactionType::Deposit => {
                 // did transaction already happen?
                 if self.tx_history.contains_key(id_pair) {
                     return Err(format!("Transaction {} already happened", tx_id));
@@ -52,7 +52,7 @@ impl TransactionManager {
                     return Err(format!("Transaction {} has no amount", tx_id));
                 }
             }
-            InputRowTransactionType::Withdrawal => {
+            TransactionType::Withdrawal => {
                 // did transaction already happen?
                 if self.tx_history.contains_key(id_pair) {
                     return Err(format!("Transaction {} already happened", tx_id));
@@ -69,11 +69,11 @@ impl TransactionManager {
                     return Err(format!("Transaction {} has no amount", tx_id));
                 }
             }
-            InputRowTransactionType::Dispute => {
-                if let Some(transaction) = self.tx_history.get(id_pair) {
-                    if let Some(amount) = transaction.get_net_amount() {
-                        client.dispute(amount);
-                        self.disputed.insert(*id_pair);
+            TransactionType::Dispute => {
+                if let Some(transaction_to_dispute) = self.tx_history.get(id_pair) {
+                    if let Some(amount) = transaction_to_dispute.get_amount() {
+                        client.dispute(amount, transaction_to_dispute.get_transaction_type());
+                        self.tx_disputed.insert(*id_pair);
                     } else {
                         return Err(format!("Transaction {} has no amount", tx_id));
                     }
@@ -81,16 +81,16 @@ impl TransactionManager {
                     return Err(format!("Transaction {} not found", tx_id));
                 }
             }
-            InputRowTransactionType::Resolve => {
+            TransactionType::Resolve => {
                 // check if the transaction is disputed
-                if !(self.disputed.contains(id_pair)) {
+                if !(self.tx_disputed.contains(id_pair)) {
                     return Err(format!("Transaction {} is not disputed", tx_id));
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
-                    if let Some(amount) = transaction.get_net_amount() {
-                        client.resolve(amount);
-                        self.disputed.remove(id_pair);
+                    if let Some(amount) = transaction.get_amount() {
+                        client.resolve(amount, transaction.get_transaction_type());
+                        self.tx_disputed.remove(id_pair);
                     } else {
                         return Err(format!("Transaction {} has no amount", tx_id));
                     }
@@ -98,17 +98,17 @@ impl TransactionManager {
                     return Err(format!("Transaction {} not found", tx_id));
                 }
             }
-            InputRowTransactionType::Chargeback => {
+            TransactionType::Chargeback => {
                 // check if the transaction is disputed
-                if !(self.disputed.contains(id_pair)) {
+                if !(self.tx_disputed.contains(id_pair)) {
                     return Err(format!("Transaction {} is not disputed", tx_id));
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
-                    if let Some(amount) = transaction.get_net_amount() {
-                        client.chargeback(amount);
+                    if let Some(amount) = transaction.get_amount() {
+                        client.chargeback(amount, transaction.get_transaction_type());
                         client.freeze();
-                        self.disputed.remove(id_pair);
+                        self.tx_disputed.remove(id_pair);
                     } else {
                         return Err(format!("Transaction {} has no amount", tx_id));
                     }
@@ -135,69 +135,43 @@ impl TransactionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::types::TransactionType::{Deposit, Dispute, Withdrawal};
     use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    use Transaction as Tx;
 
     #[test]
     fn test_input_multiple_clients_deposit_withdraw() {
-        // Arrange
-        let mut transaction_manager = TransactionManager::new();
+        let mut manager = TransactionManager::new();
 
-        let transaction1 = Transaction::new(
-            1,
-            InputRowTransactionType::Deposit,
-            1,
-            Some(Decimal::new(10, 1)),
-        );
-        let transaction2 = Transaction::new(
-            2,
-            InputRowTransactionType::Deposit,
-            2,
-            Some(Decimal::new(20, 1)),
-        );
-        let transaction3 = Transaction::new(
-            3,
-            InputRowTransactionType::Deposit,
-            1,
-            Some(Decimal::new(20, 1)),
-        );
-        let transaction4 = Transaction::new(
-            4,
-            InputRowTransactionType::Withdrawal,
-            1,
-            Some(Decimal::new(15, 1)),
-        );
-        let transaction5 = Transaction::new(
-            5,
-            InputRowTransactionType::Withdrawal,
-            2,
-            Some(Decimal::new(30, 1)),
-        );
+        let tx1 = Tx::new(1, Deposit, 1, Some(dec!(1.0)));
+        let res1 = manager.add_transaction(tx1);
+        assert_eq!(res1, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(1.0), dec!(0));
 
-        // Act
-        let _ = transaction_manager.add_transaction(transaction1);
-        let _ = transaction_manager.add_transaction(transaction2);
-        let _ = transaction_manager.add_transaction(transaction3);
-        let _ = transaction_manager.add_transaction(transaction4);
-        let _ = transaction_manager.add_transaction(transaction5);
+        let tx2 = Tx::new(2, Deposit, 2, Some(dec!(2.0)));
+        let res2 = manager.add_transaction(tx2);
+        assert_eq!(res2, Ok(()));
+        assert_balance(manager.client_db.get(&2).unwrap(), dec!(2.0), dec!(0));
 
-        // Assert
-        let client_db = transaction_manager.client_db;
-        assert_eq!(client_db.len(), 2);
+        let tx3 = Tx::new(3, Deposit, 1, Some(dec!(2.0)));
+        let res3 = manager.add_transaction(tx3);
+        assert_eq!(res3, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(3.0), dec!(0));
 
-        let client_01 = client_db.get(&1).unwrap().get_snapshot();
-        let client_02 = client_db.get(&2).unwrap().get_snapshot();
+        let tx4 = Tx::new(4, Withdrawal, 1, Some(dec!(1.5)));
+        let res4 = manager.add_transaction(tx4);
+        assert_eq!(res4, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(1.5), dec!(0));
 
-        assert_eq!(client_01.get_available(), Decimal::new(15, 1));
-        assert_eq!(client_01.get_held(), Decimal::ZERO);
-        assert_eq!(client_01.get_total(), Decimal::new(15, 1));
+        let tx5 = Tx::new(5, Withdrawal, 2, Some(dec!(3.0)));
+        let res5 = manager.add_transaction(tx5);
+        assert_eq!(res5, Err("Client 2 has insufficient funds".into()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(1.5), dec!(0));
+    }
 
-        assert_eq!(client_02.get_available(), Decimal::new(20, 1));
-        assert_eq!(client_02.get_held(), Decimal::ZERO);
-        assert_eq!(client_02.get_total(), Decimal::new(20, 1));
-
-        // if negative balance is allowed, then uncomment this
-        // assert_eq!(client_02.get_available(), Decimal::new(-10, 1));
-        // assert_eq!(client_02.get_held(), Decimal::ZERO);
-        // assert_eq!(client_02.get_total(), Decimal::new(-10, 1));
+    fn assert_balance(client: &Client, available: Decimal, held: Decimal) {
+        assert_eq!(client.get_available(), available);
+        assert_eq!(client.get_held(), held);
     }
 }
