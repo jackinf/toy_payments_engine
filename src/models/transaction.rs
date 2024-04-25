@@ -14,23 +14,23 @@ pub enum InputRowTransactionType {
 
 #[derive(Debug, PartialEq)]
 pub struct Transaction {
+    tx_id: TransactionId,
     tx_type: InputRowTransactionType,
     client_id: ClientId,
-    tx_id: TransactionId,
     amount: Option<Decimal>,
 }
 
 impl Transaction {
     pub fn new(
+        tx_id: TransactionId,
         tx_type: InputRowTransactionType,
         client_id: ClientId,
-        tx_id: TransactionId,
         amount: Option<Decimal>,
     ) -> Self {
         Transaction {
+            tx_id,
             tx_type,
             client_id,
-            tx_id,
             amount,
         }
     }
@@ -66,12 +66,17 @@ impl TryFrom<StringRecord> for Transaction {
             return Err("Invalid number of columns. Columns: type, client, tx, amount".into());
         }
 
+        let col_tx_id = value.get(COL_TX_ID).unwrap().trim();
         let col_tx_type = value.get(COL_TX_TYPE).unwrap().trim();
         let col_client_id = value.get(COL_CLIENT_ID).unwrap().trim();
-        let col_tx_id = value.get(COL_TX_ID).unwrap().trim();
         let col_amount = value.get(COL_AMOUNT).unwrap().trim();
 
-        let transaction_type = match col_tx_type {
+        let tx_id = match col_tx_id.parse::<TransactionId>() {
+            Ok(tx) => tx,
+            Err(_) => return Err("Invalid transaction id".into()),
+        };
+
+        let tx_type = match col_tx_type {
             "deposit" => InputRowTransactionType::Deposit,
             "withdrawal" => InputRowTransactionType::Withdrawal,
             "dispute" => InputRowTransactionType::Dispute,
@@ -85,22 +90,17 @@ impl TryFrom<StringRecord> for Transaction {
             Err(_) => return Err("Invalid client id".into()),
         };
 
-        let tx = match col_tx_id.parse::<TransactionId>() {
-            Ok(tx) => tx,
-            Err(_) => return Err("Invalid transaction id".into()),
-        };
-
         // If one of these transaction types were specified, the amount should be empty.
-        let is_no_amount_transaction_type = transaction_type == InputRowTransactionType::Dispute
-            || transaction_type == InputRowTransactionType::Resolve
-            || transaction_type == InputRowTransactionType::Chargeback;
+        let is_no_amount_transaction_type = tx_type == InputRowTransactionType::Dispute
+            || tx_type == InputRowTransactionType::Resolve
+            || tx_type == InputRowTransactionType::Chargeback;
 
         if is_no_amount_transaction_type {
             if !col_amount.is_empty() {
                 return Err("An amount should be empty".into());
             }
 
-            return Ok(Transaction::new(transaction_type, client_id, tx, None));
+            return Ok(Transaction::new(tx_id, tx_type, client_id, None));
         }
 
         let amount = match Decimal::from_str(col_amount) {
@@ -109,9 +109,9 @@ impl TryFrom<StringRecord> for Transaction {
         };
 
         Ok(Transaction::new(
-            transaction_type,
+            tx_id,
+            tx_type,
             client_id,
-            tx,
             Some(amount),
         ))
     }
@@ -127,23 +127,23 @@ mod test {
     #[rstest]
     #[case(
         vec!["deposit", "1", "1", "10.0"],
-        Transaction::new(InputRowTransactionType::Deposit, 1, 1, Some(Decimal::new(100, 1)))
+        Transaction::new(1, InputRowTransactionType::Deposit, 1, Some(Decimal::new(100, 1)))
     )]
     #[case(
         vec!["withdrawal", "1", "1", "10.0"],
-        Transaction::new(InputRowTransactionType::Withdrawal, 1, 1, Some(Decimal::new(100, 1)))
+        Transaction::new(1, InputRowTransactionType::Withdrawal, 1, Some(Decimal::new(100, 1)))
     )]
     #[case(
         vec!["dispute", "1", "1", ""],
-        Transaction::new(InputRowTransactionType::Dispute, 1, 1, None)
+        Transaction::new(1, InputRowTransactionType::Dispute, 1, None)
     )]
     #[case(
         vec!["resolve", "1", "1", ""],
-        Transaction::new(InputRowTransactionType::Resolve, 1, 1, None)
+        Transaction::new(1, InputRowTransactionType::Resolve, 1, None)
     )]
     #[case(
         vec!["chargeback", "1", "1", ""],
-        Transaction::new(InputRowTransactionType::Chargeback, 1, 1, None)
+        Transaction::new(1, InputRowTransactionType::Chargeback, 1, None)
     )]
     fn test_transaction_from_string_record(
         #[case] input_vec: Vec<&str>,

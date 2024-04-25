@@ -102,33 +102,33 @@ mod tests {
         let mut transaction_manager = TransactionManager::new();
 
         let transaction1 = Transaction::new(
-            InputRowTransactionType::Deposit,
             1,
+            InputRowTransactionType::Deposit,
             1,
             Some(Decimal::new(10, 1)),
         );
         let transaction2 = Transaction::new(
-            InputRowTransactionType::Deposit,
             2,
+            InputRowTransactionType::Deposit,
             2,
             Some(Decimal::new(20, 1)),
         );
         let transaction3 = Transaction::new(
+            3,
             InputRowTransactionType::Deposit,
             1,
-            3,
             Some(Decimal::new(20, 1)),
         );
         let transaction4 = Transaction::new(
+            4,
             InputRowTransactionType::Withdrawal,
             1,
-            4,
             Some(Decimal::new(15, 1)),
         );
         let transaction5 = Transaction::new(
+            5,
             InputRowTransactionType::Withdrawal,
             2,
-            5,
             Some(Decimal::new(30, 1)),
         );
 
