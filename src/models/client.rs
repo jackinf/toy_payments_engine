@@ -6,6 +6,7 @@ pub struct Client {
     client_id: ClientId,
     available: Decimal,
     held: Decimal,
+    frozen: bool,
 }
 
 impl Client {
@@ -14,6 +15,7 @@ impl Client {
             client_id,
             available: Decimal::ZERO,
             held: Decimal::ZERO,
+            frozen: false,
         }
     }
 
@@ -36,8 +38,16 @@ impl Client {
     }
 
     pub fn chargeback(&mut self, amount: Decimal) {
-        self.available -= amount; // reverse the transaction
-        self.held -= amount; // release held amount
+        // just release held amount. The amount is already deducted from available
+        self.held -= amount;
+    }
+
+    pub fn freeze(&mut self) {
+        self.frozen = true;
+    }
+
+    pub fn is_frozen(&self) -> bool {
+        self.frozen
     }
 
     pub fn get_snapshot(&self) -> ClientSnapshot {

@@ -32,20 +32,37 @@ impl TransactionManager {
             client_db.insert(client_id, Client::new(client_id));
         }
         let client = client_db.get_mut(&client_id).unwrap();
+        if client.is_frozen() {
+            // cannot do anything with frozen account
+            return;
+        }
+
         let id_pair = &(tx_id, client_id);
 
         match tx_type {
             InputRowTransactionType::Deposit => {
+                // did transaction already happen?
+                if self.tx_history.contains_key(id_pair) {
+                    return;
+                }
+
                 // unwrap should be safe as we validated already
-                client.deposit(tx_amount.unwrap())
+                client.deposit(tx_amount.unwrap());
+                self.tx_history.insert(*id_pair, tx);
             }
             InputRowTransactionType::Withdrawal => {
+                // did transaction already happen?
+                if self.tx_history.contains_key(id_pair) {
+                    return;
+                }
+
                 // unwrap should be safe as we validated already
-                client.withdraw(tx_amount.unwrap())
+                client.withdraw(tx_amount.unwrap());
+                self.tx_history.insert(*id_pair, tx);
             }
             InputRowTransactionType::Dispute => {
                 if let Some(transaction) = self.tx_history.get(id_pair) {
-                    if let Some(amount) = transaction.get_amount() {
+                    if let Some(amount) = transaction.get_net_amount() {
                         client.dispute(amount);
                         self.disputed.insert(*id_pair);
                     }
@@ -58,7 +75,7 @@ impl TransactionManager {
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
-                    if let Some(amount) = transaction.get_amount() {
+                    if let Some(amount) = transaction.get_net_amount() {
                         client.resolve(amount);
                         self.disputed.remove(id_pair);
                     }
@@ -71,8 +88,9 @@ impl TransactionManager {
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
-                    if let Some(amount) = transaction.get_amount() {
+                    if let Some(amount) = transaction.get_net_amount() {
                         client.chargeback(amount);
+                        client.freeze();
                         self.disputed.remove(id_pair);
                     }
                 }

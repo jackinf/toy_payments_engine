@@ -50,6 +50,20 @@ impl Transaction {
     pub fn get_amount(&self) -> Option<Decimal> {
         self.amount
     }
+
+    pub fn get_net_amount(&self) -> Option<Decimal> {
+        if let Some(amount) = self.amount {
+            let amount = if self.tx_type == InputRowTransactionType::Withdrawal {
+                -amount
+            } else {
+                amount
+            };
+
+            return Some(amount);
+        }
+
+        self.amount
+    }
 }
 
 const COL_TX_TYPE: usize = 0;
@@ -108,12 +122,7 @@ impl TryFrom<StringRecord> for Transaction {
             Err(_) => return Err("Invalid amount".into()),
         };
 
-        Ok(Transaction::new(
-            tx_id,
-            tx_type,
-            client_id,
-            Some(amount),
-        ))
+        Ok(Transaction::new(tx_id, tx_type, client_id, Some(amount)))
     }
 }
 
