@@ -1,5 +1,6 @@
 use crate::common::types::ClientId;
 use crate::common::types::TransactionType;
+use crate::managers::transaction_manager::TxError;
 use crate::models::client_snapshot::ClientSnapshot;
 use rust_decimal::Decimal;
 
@@ -33,8 +34,14 @@ impl Client {
         self.available += amount;
     }
 
-    pub fn withdraw(&mut self, amount: Decimal) {
+    pub fn withdraw(&mut self, amount: Decimal) -> Result<(), TxError> {
+        if self.available < amount {
+            return Err(TxError::InsufficientFunds(self.client_id));
+        }
+
         self.available -= amount;
+
+        Ok(())
     }
 
     pub fn dispute(&mut self, amount: Decimal, tx_type: TransactionType) {
@@ -157,7 +164,8 @@ mod tests {
         let mut client = Client::new(client_id);
 
         client.deposit(Decimal::new(200, 2)); // to avoid negative balance
-        client.withdraw(Decimal::new(50, 2));
+        let wres = client.withdraw(Decimal::new(50, 2));
+        assert_eq!(wres, Ok(()));
         assert_eq!(client.available, Decimal::new(150, 2));
         assert_eq!(client.held, Decimal::ZERO);
 
@@ -178,7 +186,8 @@ mod tests {
         let mut client = Client::new(client_id);
 
         client.deposit(Decimal::new(200, 2));
-        client.withdraw(Decimal::new(50, 2));
+        let wres = client.withdraw(Decimal::new(50, 2));
+        assert_eq!(wres, Ok(()));
         assert_eq!(client.available, Decimal::new(150, 2));
         assert_eq!(client.held, Decimal::ZERO);
 
@@ -190,5 +199,14 @@ mod tests {
         client.chargeback(Decimal::new(50, 2), TransactionType::Withdrawal);
         assert_eq!(client.available, Decimal::new(200, 2));
         assert_eq!(client.held, Decimal::ZERO);
+    }
+
+    #[test]
+    pub fn fail_to_withdraw() {
+        let client_id = 1;
+        let mut client = Client::new(client_id);
+
+        let wres = client.withdraw(Decimal::new(50, 2));
+        assert_eq!(wres, Err(TxError::InsufficientFunds(client_id)));
     }
 }

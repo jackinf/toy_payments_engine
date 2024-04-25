@@ -82,10 +82,7 @@ impl TransactionManager {
 
                 // check if the client has enough funds
                 if let Some(amount) = tx_amount {
-                    if client.get_available() < amount {
-                        return Err(TxError::InsufficientFunds(client_id));
-                    }
-                    client.withdraw(amount);
+                    client.withdraw(amount)?;
                     self.tx_history.insert(*id_pair, tx);
                 } else {
                     return Err(TxError::NoAmount(tx_id));
