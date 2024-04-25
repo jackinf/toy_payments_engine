@@ -157,7 +157,7 @@ impl TransactionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::types::TransactionType::{Deposit, Withdrawal};
+    use crate::common::types::TransactionType::{Deposit, Dispute, Resolve, Withdrawal};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use Transaction as Tx;
@@ -191,6 +191,81 @@ mod tests {
         assert_eq!(res5, Err(TxError::InsufficientFunds(2)));
         // balance remains unchanged
         assert_balance(manager.client_db.get(&1).unwrap(), dec!(1.5), dec!(0));
+    }
+
+    #[test]
+    pub fn test_single_client_deposit_dispute_resolve() {
+        let mut manager = TransactionManager::new();
+
+        let tx1 = Tx::new(1, Deposit, 1, Some(dec!(10.0)));
+        let res1 = manager.add_transaction(tx1);
+        assert_eq!(res1, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(10.0), dec!(0));
+
+        // Dispute + Resolve
+
+        let tx2 = Tx::new(1, Dispute, 1, None);
+        let res2 = manager.add_transaction(tx2);
+        assert_eq!(res2, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(0), dec!(10.0));
+
+        let tx3 = Tx::new(1, Resolve, 1, None);
+        let res3 = manager.add_transaction(tx3);
+        assert_eq!(res3, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(10.0), dec!(0));
+
+        // Dispute + Chargeback
+
+        let tx4 = Tx::new(1, Dispute, 1, None);
+        let res4 = manager.add_transaction(tx4);
+        assert_eq!(res4, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(0), dec!(10.0));
+
+        let tx5 = Tx::new(1, TransactionType::Chargeback, 1, None);
+        let res5 = manager.add_transaction(tx5);
+        assert_eq!(res5, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(0), dec!(0));
+    }
+
+    #[test]
+    pub fn test_single_client_withdrawal_dispute_resolve_chargeback() {
+        let mut manager = TransactionManager::new();
+
+        let tx1 = Tx::new(1, Deposit, 1, Some(dec!(10.0)));
+        let res1 = manager.add_transaction(tx1);
+        assert_eq!(res1, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(10.0), dec!(0));
+
+        let tx2 = Tx::new(2, Withdrawal, 1, Some(dec!(5.0)));
+        let res2 = manager.add_transaction(tx2);
+        assert_eq!(res2, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(5.0), dec!(0));
+
+        // Dispute + Resolve
+
+        let tx3 = Tx::new(2, Dispute, 1, None);
+        let res3 = manager.add_transaction(tx3);
+        assert_eq!(res3, Ok(()));
+        // money is still available, even though it's held
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(5.0), dec!(5.0));
+
+        let tx4 = Tx::new(2, Resolve, 1, None);
+        let res4 = manager.add_transaction(tx4);
+        assert_eq!(res4, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(5.0), dec!(0));
+
+        // Dispute + Chargeback
+
+        let tx5 = Tx::new(2, Dispute, 1, None);
+        let res5 = manager.add_transaction(tx5);
+        assert_eq!(res5, Ok(()));
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(5.0), dec!(5.0));
+
+        let tx6 = Tx::new(2, TransactionType::Chargeback, 1, None);
+        let res6 = manager.add_transaction(tx6);
+        assert_eq!(res6, Ok(()));
+        // withdrawn money is returned
+        assert_balance(manager.client_db.get(&1).unwrap(), dec!(10.0), dec!(0));
     }
 
     fn assert_balance(client: &Client, available: Decimal, held: Decimal) {
