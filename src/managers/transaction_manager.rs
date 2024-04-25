@@ -3,6 +3,28 @@ use crate::models::client::Client;
 use crate::models::client_snapshot::ClientSnapshot;
 use crate::models::transaction::Transaction;
 use std::collections::{HashMap, HashSet};
+use thiserror::Error;
+
+#[derive(Error, Debug, PartialEq)]
+pub enum TxError {
+    #[error("Client {0} is frozen")]
+    ClientFrozen(ClientId),
+
+    #[error("Transaction {0} already happened")]
+    TransactionAlreadyHappened(TransactionId),
+
+    #[error("Client {0} has insufficient funds")]
+    InsufficientFunds(ClientId),
+
+    #[error("Transaction {0} has no amount")]
+    NoAmount(TransactionId),
+
+    #[error("Transaction {0} not found")]
+    TransactionNotFound(TransactionId),
+
+    #[error("Transaction {0} is not disputed")]
+    TransactionNotDisputed(TransactionId),
+}
 
 pub struct TransactionManager {
     client_db: HashMap<ClientId, Client>,
@@ -19,7 +41,7 @@ impl TransactionManager {
         }
     }
 
-    pub fn add_transaction(&mut self, tx: Transaction) -> Result<(), String> {
+    pub fn add_transaction(&mut self, tx: Transaction) -> Result<(), TxError> {
         let client_db = &mut self.client_db;
 
         let client_id = tx.get_client_id();
@@ -33,7 +55,7 @@ impl TransactionManager {
         }
         let client = client_db.get_mut(&client_id).unwrap();
         if client.is_frozen() {
-            return Err(format!("Client {} is frozen", client_id));
+            return Err(TxError::ClientFrozen(client_id));
         }
 
         let id_pair = &(tx_id, client_id);
@@ -42,31 +64,31 @@ impl TransactionManager {
             TransactionType::Deposit => {
                 // did transaction already happen?
                 if self.tx_history.contains_key(id_pair) {
-                    return Err(format!("Transaction {} already happened", tx_id));
+                    return Err(TxError::TransactionAlreadyHappened(tx_id));
                 }
 
                 if let Some(amount) = tx_amount {
                     client.deposit(amount);
                     self.tx_history.insert(*id_pair, tx);
                 } else {
-                    return Err(format!("Transaction {} has no amount", tx_id));
+                    return Err(TxError::NoAmount(tx_id));
                 }
             }
             TransactionType::Withdrawal => {
                 // did transaction already happen?
                 if self.tx_history.contains_key(id_pair) {
-                    return Err(format!("Transaction {} already happened", tx_id));
+                    return Err(TxError::TransactionAlreadyHappened(tx_id));
                 }
 
                 // check if the client has enough funds
                 if let Some(amount) = tx_amount {
                     if client.get_available() < amount {
-                        return Err(format!("Client {} has insufficient funds", client_id));
+                        return Err(TxError::InsufficientFunds(client_id));
                     }
                     client.withdraw(amount);
                     self.tx_history.insert(*id_pair, tx);
                 } else {
-                    return Err(format!("Transaction {} has no amount", tx_id));
+                    return Err(TxError::NoAmount(tx_id));
                 }
             }
             TransactionType::Dispute => {
@@ -75,16 +97,16 @@ impl TransactionManager {
                         client.dispute(amount, transaction_to_dispute.get_transaction_type());
                         self.tx_disputed.insert(*id_pair);
                     } else {
-                        return Err(format!("Transaction {} has no amount", tx_id));
+                        return Err(TxError::NoAmount(tx_id));
                     }
                 } else {
-                    return Err(format!("Transaction {} not found", tx_id));
+                    return Err(TxError::TransactionNotFound(tx_id));
                 }
             }
             TransactionType::Resolve => {
                 // check if the transaction is disputed
                 if !(self.tx_disputed.contains(id_pair)) {
-                    return Err(format!("Transaction {} is not disputed", tx_id));
+                    return Err(TxError::TransactionNotDisputed(tx_id));
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
@@ -92,16 +114,16 @@ impl TransactionManager {
                         client.resolve(amount, transaction.get_transaction_type());
                         self.tx_disputed.remove(id_pair);
                     } else {
-                        return Err(format!("Transaction {} has no amount", tx_id));
+                        return Err(TxError::NoAmount(tx_id));
                     }
                 } else {
-                    return Err(format!("Transaction {} not found", tx_id));
+                    return Err(TxError::TransactionNotFound(tx_id));
                 }
             }
             TransactionType::Chargeback => {
                 // check if the transaction is disputed
                 if !(self.tx_disputed.contains(id_pair)) {
-                    return Err(format!("Transaction {} is not disputed", tx_id));
+                    return Err(TxError::TransactionNotDisputed(tx_id));
                 }
 
                 if let Some(transaction) = self.tx_history.get(id_pair) {
@@ -110,10 +132,10 @@ impl TransactionManager {
                         client.freeze();
                         self.tx_disputed.remove(id_pair);
                     } else {
-                        return Err(format!("Transaction {} has no amount", tx_id));
+                        return Err(TxError::NoAmount(tx_id));
                     }
                 } else {
-                    return Err(format!("Transaction {} not found", tx_id));
+                    return Err(TxError::TransactionNotFound(tx_id));
                 }
             }
         }
@@ -166,7 +188,8 @@ mod tests {
 
         let tx5 = Tx::new(5, Withdrawal, 2, Some(dec!(3.0)));
         let res5 = manager.add_transaction(tx5);
-        assert_eq!(res5, Err("Client 2 has insufficient funds".into()));
+        assert_eq!(res5, Err(TxError::InsufficientFunds(2)));
+        // balance remains unchanged
         assert_balance(manager.client_db.get(&1).unwrap(), dec!(1.5), dec!(0));
     }
 
