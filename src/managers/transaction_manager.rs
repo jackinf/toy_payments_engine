@@ -45,9 +45,12 @@ impl TransactionManager {
                     return Err(format!("Transaction {} already happened", tx_id));
                 }
 
-                // unwrap should be safe as we validated already
-                client.deposit(tx_amount.unwrap());
-                self.tx_history.insert(*id_pair, tx);
+                if let Some(amount) = tx_amount {
+                    client.deposit(amount);
+                    self.tx_history.insert(*id_pair, tx);
+                } else {
+                    return Err(format!("Transaction {} has no amount", tx_id));
+                }
             }
             InputRowTransactionType::Withdrawal => {
                 // did transaction already happen?
@@ -55,9 +58,16 @@ impl TransactionManager {
                     return Err(format!("Transaction {} already happened", tx_id));
                 }
 
-                // unwrap should be safe as we validated already
-                client.withdraw(tx_amount.unwrap());
-                self.tx_history.insert(*id_pair, tx);
+                // check if the client has enough funds
+                if let Some(amount) = tx_amount {
+                    if client.get_available() < amount {
+                        return Err(format!("Client {} has insufficient funds", client_id));
+                    }
+                    client.withdraw(amount);
+                    self.tx_history.insert(*id_pair, tx);
+                } else {
+                    return Err(format!("Transaction {} has no amount", tx_id));
+                }
             }
             InputRowTransactionType::Dispute => {
                 if let Some(transaction) = self.tx_history.get(id_pair) {
@@ -181,8 +191,13 @@ mod tests {
         assert_eq!(client_01.get_held(), Decimal::ZERO);
         assert_eq!(client_01.get_total(), Decimal::new(15, 1));
 
-        assert_eq!(client_02.get_available(), Decimal::new(-10, 1));
+        assert_eq!(client_02.get_available(), Decimal::new(20, 1));
         assert_eq!(client_02.get_held(), Decimal::ZERO);
-        assert_eq!(client_02.get_total(), Decimal::new(-10, 1));
+        assert_eq!(client_02.get_total(), Decimal::new(20, 1));
+
+        // if negative balance is allowed, then uncomment this
+        // assert_eq!(client_02.get_available(), Decimal::new(-10, 1));
+        // assert_eq!(client_02.get_held(), Decimal::ZERO);
+        // assert_eq!(client_02.get_total(), Decimal::new(-10, 1));
     }
 }

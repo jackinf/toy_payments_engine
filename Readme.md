@@ -33,6 +33,7 @@ cargo bench
 ## Assumptions
 
 After reading the requirements, I made the following assumptions:
+- I do not allow negative balances
 - I can dispute both deposits and withdrawals (and nothing else)
 - If I dispute the withdrawal, then it's like disputing a deposit but with a reversed sign
 - If I deposit/withdraw using the transaction id that has already been seen, then the transaction is ignored

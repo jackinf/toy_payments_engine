@@ -19,6 +19,10 @@ impl Client {
         }
     }
 
+    pub fn get_available(&self) -> Decimal {
+        self.available
+    }
+
     pub fn deposit(&mut self, amount: Decimal) {
         self.available += amount;
     }

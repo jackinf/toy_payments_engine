@@ -10,7 +10,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg(
             Arg::new("filename")
                 .help("The CSV file to read")
-                .required(true)
+                .required(false)
+                .default_value("transactions.csv")
                 .index(1),
         )
         .get_matches();
